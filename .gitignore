@@ -1,0 +1,36 @@
+# Ambiente Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Banco de dados
+*.db
+*.db-journal
+
+# Secrets
+.env
+erp/backend/.env
+
+# Dados locais
+erp/data/xmls/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude internal
+.claude/
+
+# OneDrive temp
+.tmp.driveupload/

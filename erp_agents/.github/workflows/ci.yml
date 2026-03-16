@@ -1,0 +1,288 @@
+name: ERP — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, "sprint/**", "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: "Ambiente de deploy"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  AWS_REGION: sa-east-1
+
+jobs:
+
+  # ── 1. TESTES BACKEND ──────────────────────────────────────────────────
+  test-backend:
+    name: "🧪 Testes Backend"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erp_test
+          POSTGRES_PASSWORD: erp_test
+          POSTGRES_DB: erp_test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          cd erp-backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio bandit ruff
+
+      - name: Lint (ruff)
+        run: ruff check erp-backend/
+
+      - name: Scan segurança (bandit)
+        run: bandit -r erp-backend/ -f json -o bandit-report.json || true
+
+      - name: Testes unitários + integração
+        env:
+          DATABASE_URL: postgresql://erp_test:erp_test@localhost:5432/erp_test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          cd erp-backend
+          pytest tests/ --cov=app --cov-report=xml --cov-fail-under=80 -v
+
+      - name: Upload cobertura
+        uses: codecov/codecov-action@v4
+        with:
+          file: erp-backend/coverage.xml
+          flags: backend
+
+      - name: Upload relatório segurança
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  # ── 2. TESTES FRONTEND ─────────────────────────────────────────────────
+  test-frontend:
+    name: "🖥️ Testes Frontend"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: erp-frontend/package-lock.json
+
+      - name: Instalar dependências
+        run: cd erp-frontend && npm ci
+
+      - name: Lint (ESLint)
+        run: cd erp-frontend && npm run lint
+
+      - name: Testes unitários (Vitest)
+        run: cd erp-frontend && npm run test:coverage
+
+      - name: Build de produção
+        run: cd erp-frontend && npm run build
+
+  # ── 3. TESTES E2E ──────────────────────────────────────────────────────
+  test-e2e:
+    name: "🎭 Testes E2E (Playwright)"
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Instalar Playwright
+        run: |
+          cd erp-frontend
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Rodar testes E2E
+        run: cd erp-frontend && npx playwright test
+
+      - name: Upload relatório E2E
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: erp-frontend/playwright-report/
+
+  # ── 4. SEGURANÇA ───────────────────────────────────────────────────────
+  security-scan:
+    name: "🔒 Scan de Segurança"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar dependências Python vulneráveis
+        run: |
+          pip install safety
+          safety check -r erp-backend/requirements.txt
+
+      - name: Verificar dependências Node vulneráveis
+        run: cd erp-frontend && npm audit --audit-level=high
+
+      - name: Scan SAST (Semgrep)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/owasp-top-ten p/python p/typescript"
+
+  # ── 5. BUILD E PUSH DOCKER ─────────────────────────────────────────────
+  build-and-push:
+    name: "🐳 Build Docker + Push ECR"
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, security-scan]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      backend-image:  ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./erp-backend
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/erp-backend:${{ github.sha }}
+
+      - name: Build e push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./erp-frontend
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/erp-frontend:${{ github.sha }}
+
+  # ── 6. DEPLOY STAGING ─────────────────────────────────────────────────
+  deploy-staging:
+    name: "🚀 Deploy Staging"
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Deploy no ECS Staging
+        run: |
+          aws ecs update-service \
+            --cluster erp-staging \
+            --service erp-backend-staging \
+            --force-new-deployment
+
+          aws ecs update-service \
+            --cluster erp-staging \
+            --service erp-frontend-staging \
+            --force-new-deployment
+
+      - name: Aguardar serviço estabilizar
+        run: |
+          aws ecs wait services-stable \
+            --cluster erp-staging \
+            --services erp-backend-staging erp-frontend-staging
+
+      - name: Health check
+        run: |
+          curl -f https://staging.erp.interno/api/health || exit 1
+          echo "✅ Staging está saudável!"
+
+  # ── 7. DEPLOY PRODUÇÃO (aprovação manual) ─────────────────────────────
+  deploy-production:
+    name: "🏭 Deploy Produção"
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment:
+      name: production
+      url: https://erp.empresa.com.br
+    # APROVAÇÃO MANUAL OBRIGATÓRIA — configurada no GitHub Environments
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Deploy Blue/Green em Produção
+        run: |
+          aws ecs update-service \
+            --cluster erp-production \
+            --service erp-backend-prod \
+            --force-new-deployment \
+            --deployment-configuration "maximumPercent=200,minimumHealthyPercent=100"
+
+          aws ecs update-service \
+            --cluster erp-production \
+            --service erp-frontend-prod \
+            --force-new-deployment
+
+      - name: Aguardar estabilização (30 min timeout)
+        timeout-minutes: 30
+        run: |
+          aws ecs wait services-stable \
+            --cluster erp-production \
+            --services erp-backend-prod erp-frontend-prod
+
+      - name: Health check produção
+        run: |
+          curl -f https://erp.empresa.com.br/api/health || {
+            echo "❌ Health check falhou — iniciando rollback automático"
+            aws ecs update-service --cluster erp-production --service erp-backend-prod \
+              --task-definition erp-backend-prod:$(( $(aws ecs describe-services --cluster erp-production --services erp-backend-prod --query 'services[0].taskDefinition' --output text | grep -oP '\d+$') - 1 ))
+            exit 1
+          }
+          echo "✅ Produção está saudável! Deploy concluído."
+
+      - name: Notificar Raphael (Slack)
+        if: always()
+        run: |
+          STATUS="${{ job.status == 'success' && '✅ Deploy concluído com sucesso!' || '❌ Deploy FALHOU — rollback automático executado' }}"
+          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+            -H 'Content-type: application/json' \
+            -d "{\"text\": \"$STATUS\nAmbiente: Produção\nCommit: ${{ github.sha }}\"}"

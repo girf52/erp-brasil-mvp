@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./erp.db
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-troque-em-producao}
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://localhost"]
+    volumes:
+      - erp_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  erp_data:

@@ -1,0 +1,22 @@
+# Ambiente
+.env
+*.pyc
+__pycache__/
+node_modules/
+dist/
+.vite/
+
+# Banco de dados
+*.db
+*.db-journal
+
+# Dados locais
+data/xmls/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
