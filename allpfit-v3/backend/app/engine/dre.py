@@ -181,7 +181,8 @@ async def calc_dre(db: AsyncSession, date_from: date, date_to: date) -> dict:
     # 4. Fluxo de Caixa — entradas e saídas por fonte (regime de caixa)
     # -------------------------------------------------------------------------
 
-    # Itaú entradas (créditos)
+    # Itaú entradas operacionais (créditos — excluindo APL APLIC retornos que
+    # são apenas movimentos internos de caixa, não receitas reais)
     itau_in_q = await db.execute(
         select(
             func.coalesce(func.sum(BankEntry.amount), Decimal("0")).label("total"),
@@ -190,6 +191,7 @@ async def calc_dre(db: AsyncSession, date_from: date, date_to: date) -> dict:
         .where(
             BankEntry.source == "itau",
             BankEntry.entry_type == "credit",
+            BankEntry.dre_group != "Aplicações Financeiras",
             BankEntry.date >= date_from,
             BankEntry.date <= date_to,
         )
@@ -240,7 +242,8 @@ async def calc_dre(db: AsyncSession, date_from: date, date_to: date) -> dict:
     )
     stone_vs_evo_diff = receita_stone - evo_cartao  # positivo = Stone > EVO (raro); negativo = inadimplência/pendente
 
-    # ── Lançamentos não classificados ────────────────────────────────────
+    # ── Lançamentos não classificados (apenas débitos — créditos Stone/Itaú
+    #    são tratados pelo EVO e não precisam de categorização para o DRE)
     unclass_q = await db.execute(
         select(
             func.count().label("qty"),
@@ -249,6 +252,8 @@ async def calc_dre(db: AsyncSession, date_from: date, date_to: date) -> dict:
         .where(
             BankEntry.date >= date_from,
             BankEntry.date <= date_to,
+            BankEntry.entry_type == "debit",
+            BankEntry.is_stone_mdr == False,   # noqa: E712 — MDR tem tratamento próprio
             BankEntry.dre_group == "Outros",
             BankEntry.dre_label == "Não Classificado",
         )
