@@ -8,8 +8,9 @@ O gatilho (maturidade do MMX Gestão) foi acionado em **01/08/2026**. Existe có
 
 - **Código:** `sistema/` · repo privado `girf52/saas-erp-vertical`, branch **`main`**
 - **Nuvem:** Supabase `ucflgecidugtolzplojg` (sa-east-1) · Vercel `saas-erp-vertical.vercel.app` · CI no GitHub Actions
-- **Estado em 04/08/2026:** 28 migrações, 221 testes verdes. Onda 0 fechada; núcleo comercial da Onda 1 concluído (pessoa → produtos/grade → estoque → vendas → categoria financeira/DRE)
-- **A seguir:** fiscal, compras, OS/serviços, financeiro (títulos), PDV
+- **Estado em 04/08/2026:** 33 migrações, 328 testes verdes. Onda 0 fechada. Da Onda 1 está pronto tudo que não depende de contrato com terceiro: pessoa → produtos/grade → estoque → vendas → categoria financeira/DRE → financeiro (títulos) → compras → OS/serviços → crediário → esqueleto fiscal
+- **Travado por relógio externo (não por código):** emissão real de nota (contrato de gateway + certificado A1 + credenciamento SEFAZ), conteúdo do TaxEngine, BankingGateway (middleware bancário), TEF por adquirente
+- **A seguir, ainda buildável:** regime tributário por empresa (com `opcao_ibs_cbs`), motor de conciliação, relatórios/exportação, entrada de nota inteligente, GED leve, migração assistida, PDV (Onda 2)
 
 ## Regras do usuário
 
