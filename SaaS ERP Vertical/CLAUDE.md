@@ -8,10 +8,10 @@ O gatilho (maturidade do MMX Gestão) foi acionado em **01/08/2026**. Existe có
 
 - **Código:** `sistema/` · repo privado `girf52/saas-erp-vertical`, branch **`main`**
 - **Nuvem:** Supabase `ucflgecidugtolzplojg` (sa-east-1) · Vercel `saas-erp-vertical.vercel.app` · CI no GitHub Actions
-- **Estado em 05/08/2026:** 38 migrações, 479 testes verdes. Onda 0 fechada. Da Onda 1 está pronto tudo que não depende de contrato com terceiro: pessoa → produtos/grade → estoque → vendas → categoria financeira/DRE → financeiro (títulos) → compras → OS/serviços → crediário → esqueleto fiscal → regime tributário (dual, com Simples híbrido) → conciliação bancária → relatórios/exportação → entrada de nota inteligente → migração assistida
+- **Estado em 05/08/2026:** 39 migrações, 513 testes verdes. **Onda 1 fechada no que não depende de contrato com terceiro**: pessoa → produtos/grade → estoque → vendas → categoria financeira/DRE → financeiro (títulos) → compras → OS/serviços → crediário → esqueleto fiscal → regime tributário (dual, com Simples híbrido) → conciliação bancária → relatórios/exportação → entrada de nota inteligente → migração assistida → GED
 - **Travado por relógio externo (não por código):** emissão real de nota (contrato de gateway + certificado A1 + credenciamento SEFAZ), conteúdo tributário de presumido/real, BankingGateway (middleware bancário), TEF por adquirente
-- **A seguir, ainda buildável:** GED leve; depois o PDV, que já é Onda 2
-- **Sem dependência nova, de propósito:** parser de XML (`lib/xml.ts`), leitor de NF-e (`lib/nfe.ts`), escritor de XLSX (`lib/exportar.ts`), leitor de CSV (`lib/importar.ts`)
+- **A seguir:** PDV (Onda 2) — local-first com contingência offline, a engenharia mais pesada do plano
+- **Sem dependência nova, de propósito:** parser de XML (`lib/xml.ts`), leitor de NF-e (`lib/nfe.ts`), escritor de XLSX (`lib/exportar.ts`), leitor de CSV (`lib/importar.ts`), conferência de upload (`lib/arquivo.ts`)
 
 ## Regras do usuário
 
