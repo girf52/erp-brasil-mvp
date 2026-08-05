@@ -32,6 +32,10 @@ E: quem faz `revoke execute on all functions in schema interno from public` derr
 
 Rotina ao fechar uma etapa: `npx.cmd supabase db reset --no-seed` → `npx.cmd tsc --noEmit` → `npm test` → commit → push → CI → `npx.cmd supabase db push`.
 
+**Coluna derivada entra em `interno.coluna_derivada`.** A guarda `interno.auditar_padroes()` roda no teste e quebra o build se alguma delas estiver gravável — foi ela que pegou 18 colunas abertas no fim da Onda 1, incluindo a prova do aceite do crediário. Se `testes/padroes.test.ts` falhar, ou faltou um `revoke` na migração nova, ou a coluna derivada não foi registrada. Não "ajustar o teste".
+
+**Revisão de fim de onda** (prática adotada em 05/08/2026): antes de fechar cada onda, rodar a auditoria, sondar o que ela ainda não cobre e transformar todo achado repetível em regra da guarda.
+
 ## Arquitetura que não se desfaz
 
 - **Contexto selado, não JWT.** `interno.current_tenant()` só aceita tenant acompanhado de selo HMAC cujo segredo mora em `interno`. Claim de JWT não é fonte aceita.
